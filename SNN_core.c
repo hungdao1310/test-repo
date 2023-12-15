@@ -6,7 +6,7 @@
 #define AXONS 256
 #define NEURONS_PER_CORE 256
 #define NUM_CORES 5
-#define FIFO_SIZE 256
+#define FIFO_SIZE 1000
 #define GROUPS 32
 
 typedef struct {
@@ -93,7 +93,7 @@ void readNeuronData(SNNCore* core, const char* line, int neuronIndex) {
     for (int i = 0; i < AXONS; i++) 
     {
         int8_t temp = core->synapse_connections[i][neuronIndex/8]; // group_index = neuronIndex/8
-        core->synapse_connections[i][neuronIndex/8] = (temp << neuronIndex) | (line[i] - '0'); // convert to int8_t
+        core->synapse_connections[i][neuronIndex/8] = temp | ((line[i] - '0') << (7 - (neuronIndex%8))); // convert to int8_t
     }
     int8_t params[11];
     for (int i = 0, j = AXONS; i < 11; i++, j += 8) 
@@ -206,21 +206,25 @@ void processSpikeEvent() {
             uint8_t axon_index = dequeue(&cores[core_index].spikeQueue);
             for (int i = 0; i < NEURONS_PER_CORE; i++) 
             {
+                //printf("%d_", i);
                 int connected = cores[core_index].synapse_connections[axon_index][i/8];
+                //printf("%d ", connected & (1 << (7 - i % 8)));
                 if (connected & (1 << (7 - i % 8))) 
                 {
                     Neuron* neuron = &cores[core_index].neurons[i];
                     // check if connection exists
-                    if (neuron_behavior(&cores[core_index].neurons[i], i))
+                    int spike = neuron_behavior(&cores[core_index].neurons[i], i);
+                    //printf("%d ", spike);
+                    if (spike)
                     {
                         cores[core_index].output_axons[i] = 1;
                         if (core_index < (NUM_CORES - 1))
                         {
-                            printf("Neuron %d of Core %d fired spike to axon %d of Core %d\n", i, core_index, neuron->destination_axon, neuron->destination_core);
+                            printf("Neuron %d of Core %d from axon %d fired spike to axon %d of Core %d\n", i, core_index, axon_index, neuron->destination_axon, neuron->destination_core);
                             enqueue(&cores[neuron->destination_core].spikeQueue, neuron->destination_axon);
                         } else
                         {
-                            printf("Core %d : Neuron %d fired spike\n", core_index, i);
+                            printf("Core %d : Neuron %d from axon %d fired spike\n", core_index, i, axon_index);
                         }
                     }
                 }
