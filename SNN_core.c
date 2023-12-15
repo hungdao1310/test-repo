@@ -86,7 +86,7 @@ void initializeCore() {
         for (int j = 0; j < AXONS; j++) 
             for (int k = 0; k < GROUPS; k++) 
                 cores[i].synapse_connections[j][k] = 0;
-    }
+    } 
 }
 
 void readNeuronData(SNNCore* core, const char* line, int neuronIndex) {
