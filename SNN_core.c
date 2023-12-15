@@ -86,7 +86,7 @@ void initializeCore() {
         for (int j = 0; j < AXONS; j++) 
             for (int k = 0; k < GROUPS; k++) 
                 cores[i].synapse_connections[j][k] = 0;
-    } 
+    }
 }
 
 void readNeuronData(SNNCore* core, const char* line, int neuronIndex) {
@@ -119,9 +119,13 @@ void readNeuronData(SNNCore* core, const char* line, int neuronIndex) {
     neuron->negative_threshold = params[8];
     neuron->destination_axon = params[9];
     neuron->destination_core = params[10];
+    printf("Neuron %d: ", neuronIndex);
+    for (int i = 0; i <11; i ++)
+        printf("%d ", params[i]);
+    printf("\n");
 }
 // Rework
-int getNeuronData(SNNCore* cores) {
+int getNeuronData(SNNCore cores[]) {
     FILE* file = fopen("neuron_data.txt", "r");
     if (file == NULL) 
     {
@@ -132,6 +136,7 @@ int getNeuronData(SNNCore* cores) {
     int core_index = 0, neuronIndex = 0;
     while (fgets(line, sizeof(line), file)) 
     {
+        printf("Core %d - ", core_index);
         readNeuronData(&cores[core_index], line, neuronIndex);
         neuronIndex++;
         if (neuronIndex >= NEURONS_PER_CORE) 
@@ -145,7 +150,7 @@ int getNeuronData(SNNCore* cores) {
     return 0;
 }
 // Rework
-Queue* loadSpikesToQueue(SNNCore** core) {
+Queue* loadSpikesToQueue() {
     Queue* lastSpikeQueue = NULL;
     int count_input = 0;
     char line[260];
@@ -165,12 +170,12 @@ Queue* loadSpikesToQueue(SNNCore** core) {
         {
             if (line[axon_index] == '1') {
                 total_spikes ++;
-                enqueue(&core[core_index]->spikeQueue, axon_index);
+                enqueue(&cores[core_index].spikeQueue, axon_index);
                 fprintf(output_file, "%d ", axon_index);
             }
         }
         fprintf(output_file, ", Total: %d\n", total_spikes);
-        lastSpikeQueue = &core[core_index]->spikeQueue; 
+        lastSpikeQueue = &cores[core_index].spikeQueue; 
     }
     fclose(output_file); 
     fclose(file);
@@ -193,27 +198,30 @@ int neuron_behavior(Neuron* neuron, int neuron_index){
     return 0;
 }
 
-void processSpikeEvent(SNNCore** core) {
+void processSpikeEvent() {
     for (int core_index = 0; core_index < NUM_CORES; core_index ++)
     {    
-        while (!isEmpty(&core[core_index]->spikeQueue)) 
+        while (!isEmpty(&cores[core_index].spikeQueue)) 
         {
-            uint8_t axon_index = dequeue(&core[core_index]->spikeQueue);
+            uint8_t axon_index = dequeue(&cores[core_index].spikeQueue);
             for (int i = 0; i < NEURONS_PER_CORE; i++) 
             {
-                if (core[core_index]->synapse_connections[axon_index][i/8] & (1 << (7 - i % 8))) 
+                int connected = cores[core_index].synapse_connections[axon_index][i/8];
+                if (connected & (1 << (7 - i % 8))) 
                 {
-                    Neuron* neuron = &core[core_index]->neurons[i];
+                    Neuron* neuron = &cores[core_index].neurons[i];
                     // check if connection exists
-                    if (neuron_behavior(&core[core_index]->neurons[i], i))
+                    if (neuron_behavior(&cores[core_index].neurons[i], i))
                     {
-                        core[core_index]->output_axons[i] = 1;
+                        cores[core_index].output_axons[i] = 1;
                         if (core_index < (NUM_CORES - 1))
                         {
-                            printf("Neuron %d fired spike to axon %d of Core %d\n", i, neuron->destination_axon, neuron->destination_core);
-                            enqueue(&core[neuron->destination_core]->spikeQueue, neuron->destination_axon);
+                            printf("Neuron %d of Core %d fired spike to axon %d of Core %d\n", i, core_index, neuron->destination_axon, neuron->destination_core);
+                            enqueue(&cores[neuron->destination_core].spikeQueue, neuron->destination_axon);
                         } else
+                        {
                             printf("Core %d : Neuron %d fired spike\n", core_index, i);
+                        }
                     }
                 }
             }
@@ -248,10 +256,11 @@ int main() {
         return 1;
     }
     // Load the first spike_in to queues
-    loadSpikesToQueue(cores);
+    loadSpikesToQueue();
     // SNN behavior
-    processSpikeEvent(cores);
+    processSpikeEvent();
     // Save output axons
     saveOutputAxons(cores, "output_axons.txt");
+    printf("\nDone.\n");
     return 0;
 }
